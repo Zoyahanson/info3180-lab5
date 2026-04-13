@@ -5,16 +5,20 @@ Werkzeug Documentation:  https://werkzeug.palletsprojects.com/
 This file creates your application.
 """
 
-from app import app
-from flask import render_template, request, jsonify, send_file
+from flask import render_template, request, jsonify, send_file, Blueprint, current_app
 import os
+from .models import Movie
+from .forms import MovieForm
+from . import db, app
+from werkzeug.utils import secure_filename
+from flask_wtf.csrf import generate_csrf
 
-
+bp = Blueprint('main', __name__)
 ###
 # Routing for your application.
 ###
 
-@app.route('/')
+@bp.route('/')
 def index():
     return jsonify(message="This is the beginning of our API")
 
@@ -38,14 +42,14 @@ def form_errors(form):
 
     return error_messages
 
-@app.route('/<file_name>.txt')
+@bp.route('/<file_name>.txt')
 def send_text_file(file_name):
     """Send your static text file."""
     file_dot_text = file_name + '.txt'
     return app.send_static_file(file_dot_text)
 
 
-@app.after_request
+@bp.after_request
 def add_header(response):
     """
     Add headers to both force latest IE rendering engine or Chrome Frame,
@@ -57,7 +61,38 @@ def add_header(response):
     return response
 
 
-@app.errorhandler(404)
+@bp.errorhandler(404)
 def page_not_found(error):
     """Custom 404 page."""
     return render_template('404.html'), 404
+
+@app.route('/api/v1/movies', methods=['POST'])
+def movies():
+    form = MovieForm()
+
+    if form.validate_on_submit():
+        title = form.title.data
+        description = form.description.data
+        file = form.poster.data
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        movie = Movie(title=title, description=description, poster=filename)
+        db.session.add(movie)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Movie Successfully added",
+            "title": title,
+            "poster": filename,
+            "description": description
+        })
+
+    else:
+        return jsonify({"errors": form.errors}), 400
+    
+@app.route('/api/v1/csrf-token')
+def get_csrf():
+    return jsonify({'csrf_token': generate_csrf()})
