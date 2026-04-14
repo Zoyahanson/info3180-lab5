@@ -5,11 +5,11 @@ Werkzeug Documentation:  https://werkzeug.palletsprojects.com/
 This file creates your application.
 """
 
-from flask import render_template, request, jsonify, send_file, Blueprint, current_app
+from flask import render_template, request, jsonify, send_file, Blueprint, current_app, send_from_directory
 import os
 from .models import Movie
 from .forms import MovieForm
-from . import db, app
+from . import db
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import generate_csrf
 
@@ -46,7 +46,7 @@ def form_errors(form):
 def send_text_file(file_name):
     """Send your static text file."""
     file_dot_text = file_name + '.txt'
-    return app.send_static_file(file_dot_text)
+    return current_app.send_static_file(file_dot_text)
 
 
 @bp.after_request
@@ -63,10 +63,9 @@ def add_header(response):
 
 @bp.errorhandler(404)
 def page_not_found(error):
-    """Custom 404 page."""
-    return render_template('404.html'), 404
+    return jsonify({"error": "Not found"}), 404
 
-@app.route('/api/v1/movies', methods=['POST'])
+@bp.route('/movies', methods=['POST'])
 def movies():
     form = MovieForm()
 
@@ -91,8 +90,28 @@ def movies():
         })
 
     else:
-        return jsonify({"errors": form.errors}), 400
+        errors = form_errors(form)
+        return jsonify({"errors": errors}), 400
     
-@app.route('/api/v1/csrf-token')
+@bp.route('/csrf-token', methods=['GET'])
 def get_csrf():
     return jsonify({'csrf_token': generate_csrf()})
+
+@bp.route('/movies', methods=['GET'])
+def get_movies():
+    movies = Movie.query.all()
+
+    data = []
+    for m in movies:
+        data.append({
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "poster": f"/api/v1/posters/{m.poster}"
+        })
+
+    return jsonify({"movies": data})
+
+@bp.route('/posters/<filename>')
+def get_image(filename):
+    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
